@@ -1,0 +1,834 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Upload Excel & Generator ZPL Printronix T600</title>
+    <!-- Tailwind CSS CDN -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <!-- Font Awesome Icons -->
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
+    <!-- Google Fonts Inter -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <!-- SheetJS (XLSX Parser Library) -->
+    <script src="https://cdn.jsdelivr.net/npm/xlsx@0.18.5/dist/xlsx.full.min.js"></script>
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f3f4f6;
+        }
+        .custom-scrollbar::-webkit-scrollbar {
+            height: 6px;
+            width: 6px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-track {
+            background: #f1f1f1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb {
+            background: #cbd5e1;
+            border-radius: 4px;
+        }
+        .custom-scrollbar::-webkit-scrollbar-thumb:hover {
+            background: #94a3b8;
+        }
+    </style>
+</head>
+<body class="text-slate-800 antialiased min-h-screen flex flex-col">
+
+    <!-- TOP NAVBAR -->
+    <header class="bg-indigo-900 text-white shadow-lg sticky top-0 z-30">
+        <div class="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8">
+            <div class="flex items-center justify-between h-16">
+                <!-- Brand Title -->
+                <div class="flex items-center space-x-3">
+                    <div class="bg-indigo-700 p-2 rounded-lg text-indigo-200">
+                        <i class="fa-solid fa-file-excel text-xl"></i>
+                    </div>
+                    <div>
+                        <h1 class="font-bold text-lg leading-tight">SUMBERTAG Excel Importer</h1>
+                        <p class="text-xs text-indigo-300">ZPL Printronix T600 Converter per Toko</p>
+                    </div>
+                </div>
+
+                <!-- Controls & Status -->
+                <div class="flex items-center space-x-3">
+                    <div id="syncStatus" class="hidden sm:flex items-center space-x-2 bg-indigo-950/60 text-xs px-3 py-1.5 rounded-full border border-indigo-700/50">
+                        <span class="relative flex h-2 w-2">
+                          <span class="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-75"></span>
+                          <span class="relative inline-flex rounded-full h-2 w-2 bg-emerald-500"></span>
+                        </span>
+                        <span id="syncText" class="text-indigo-200 font-medium">Auto-Sync Active</span>
+                    </div>
+
+                    <button id="btnRefresh" onclick="fetchData()" title="Refresh Data Spreadsheet" class="p-2 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-indigo-100 transition active:scale-95 focus:outline-none">
+                        <i class="fa-solid fa-rotate text-sm" id="iconRefresh"></i>
+                    </button>
+
+                    <button onclick="toggleSettingsModal()" title="Pengaturan URL Back-End" class="p-2 rounded-lg bg-indigo-800 hover:bg-indigo-700 text-indigo-100 transition active:scale-95 focus:outline-none">
+                        <i class="fa-solid fa-gear text-sm"></i>
+                    </button>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <!-- MAIN CONTAINER -->
+    <main class="flex-1 max-w-7xl w-full mx-auto px-4 sm:px-6 lg:px-8 py-6 space-y-6">
+
+        <!-- ALERT / NOTIFICATION BANNER -->
+        <div id="toast" class="hidden transform transition-all duration-300 p-4 rounded-xl shadow-md flex items-center justify-between">
+            <div class="flex items-center space-x-3">
+                <i id="toastIcon" class="text-xl"></i>
+                <p id="toastMessage" class="text-sm font-medium"></p>
+            </div>
+            <button onclick="hideToast()" class="text-slate-400 hover:text-slate-600">
+                <i class="fa-solid fa-xmark"></i>
+            </button>
+        </div>
+
+        <!-- UPLOAD SECTION & INSTRUCTION -->
+        <div class="bg-white p-6 rounded-2xl border border-slate-200/80 shadow-sm space-y-4">
+            <div class="flex flex-col md:flex-row md:items-center justify-between gap-4 border-b border-slate-100 pb-4">
+                <div>
+                    <h2 class="text-lg font-bold text-slate-800 flex items-center space-x-2">
+                        <i class="fa-solid fa-cloud-arrow-up text-indigo-600"></i>
+                        <span>Upload File Excel Toko (.xlsx / .xls / .csv)</span>
+                    </h2>
+                    <p class="text-xs text-slate-500 mt-0.5">
+                        Format header kolom Excel harus: <span class="font-mono text-indigo-700 font-semibold">NO_TAG | NAMA_BARANG | USER | KODE_CC | NAMA_CC</span>
+                    </p>
+                </div>
+
+                <div class="flex items-center space-x-2">
+                    <button onclick="downloadSampleExcel()" class="text-xs bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium px-3.5 py-2 rounded-xl transition border border-slate-200 flex items-center space-x-1.5">
+                        <i class="fa-solid fa-download text-indigo-600"></i>
+                        <span>Download Contoh Format Excel</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- DRAG & DROP AREA -->
+            <div id="dropZone" onclick="document.getElementById('excelFileInput').click()" class="border-2 border-dashed border-indigo-200 hover:border-indigo-500 bg-indigo-50/40 hover:bg-indigo-50 rounded-2xl p-6 text-center cursor-pointer transition flex flex-col items-center justify-center space-y-2">
+                <input type="file" id="excelFileInput" accept=".xlsx, .xls, .csv" onchange="handleFileSelect(event)" class="hidden">
+                <div class="w-12 h-12 bg-indigo-100 text-indigo-600 rounded-full flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-file-csv" id="uploadIcon"></i>
+                </div>
+                <div>
+                    <p class="text-sm font-semibold text-indigo-900">Klik untuk memilih file Excel atau Tarik file ke sini</p>
+                    <p class="text-xs text-slate-400 mt-1" id="fileNameDisplay">Setiap kali upload baru, data lama di spreadsheet akan digantikan secara otomatis.</p>
+                </div>
+            </div>
+        </div>
+
+        <!-- STATS CARDS -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Barang Tag</p>
+                    <h3 id="statTotal" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+                </div>
+                <div class="w-12 h-12 bg-blue-50 text-blue-600 rounded-xl flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-tags"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total User/OPR</p>
+                    <h3 id="statUsers" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+                </div>
+                <div class="w-12 h-12 bg-emerald-50 text-emerald-600 rounded-xl flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-user-gear"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Total Cost Center</p>
+                    <h3 id="statCC" class="text-2xl font-bold text-slate-800 mt-1">0</h3>
+                </div>
+                <div class="w-12 h-12 bg-purple-50 text-purple-600 rounded-xl flex items-center justify-center text-xl">
+                    <i class="fa-solid fa-sitemap"></i>
+                </div>
+            </div>
+
+            <div class="bg-white p-5 rounded-2xl border border-slate-200/80 shadow-sm flex items-center justify-between">
+                <div>
+                    <p class="text-xs font-semibold text-slate-400 uppercase tracking-wider">Update Terakhir</p>
+                    <h3 id="statTime" class="text-sm font-semibold text-slate-700 mt-2">--:--:--</h3>
+                </div>
+                <div class="w-12 h-12 bg-amber-50 text-amber-600 rounded-xl flex items-center justify-center text-xl">
+                    <i class="fa-regular fa-clock"></i>
+                </div>
+            </div>
+        </div>
+
+        <!-- MONITORING TABLE & EXPORT ZPL SECTION -->
+        <div class="bg-white rounded-2xl shadow-sm border border-slate-200/80 p-5 space-y-4">
+            <!-- Header Actions -->
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-4">
+                <div>
+                    <h2 class="font-bold text-slate-800 text-lg">Monitoring Data Spreadsheet Toko</h2>
+                    <p class="text-xs text-slate-500">Sheet: <span class="font-semibold text-indigo-600">SUMBERTAG</span></p>
+                </div>
+                
+                <div class="flex flex-wrap items-center gap-2">
+                    <button onclick="exportZPL('selected')" id="btnExportSelected" disabled class="bg-slate-100 text-slate-400 font-medium text-xs px-3.5 py-2 rounded-xl transition flex items-center space-x-1.5 border border-slate-200">
+                        <i class="fa-solid fa-file-arrow-down text-indigo-500"></i>
+                        <span>Export ZPL Terpilih (<span id="selectedCount">0</span>)</span>
+                    </button>
+
+                    <button onclick="exportZPL('all')" class="bg-emerald-600 hover:bg-emerald-700 text-white font-medium text-xs px-3.5 py-2 rounded-xl shadow border border-emerald-600 transition flex items-center space-x-1.5 active:scale-95">
+                        <i class="fa-solid fa-file-lines"></i>
+                        <span>Export Semuanya (.TXT ZPL)</span>
+                    </button>
+                </div>
+            </div>
+
+            <!-- Search & Filter Controls -->
+            <div class="flex flex-col sm:flex-row gap-3">
+                <div class="relative flex-1">
+                    <i class="fa-solid fa-magnifying-glass absolute left-3.5 top-3 text-slate-400 text-sm"></i>
+                    <input type="text" id="searchInput" oninput="filterData()" placeholder="Cari No Tag, Nama Barang, User..." class="w-full pl-10 pr-4 py-2 bg-slate-50 border border-slate-200 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                </div>
+                <div class="flex items-center space-x-2">
+                    <label class="text-xs text-slate-500 font-medium whitespace-nowrap">Auto Refresh:</label>
+                    <select id="autoRefreshSelect" onchange="changeAutoRefresh(this.value)" class="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500">
+                        <option value="10000" selected>10 Detik</option>
+                        <option value="30000">30 Detik</option>
+                        <option value="60000">1 Menit</option>
+                        <option value="0">Non-aktif</option>
+                    </select>
+                </div>
+            </div>
+
+            <!-- TABLE CONTENT -->
+            <div class="overflow-x-auto custom-scrollbar rounded-xl border border-slate-200 min-h-[350px]">
+                <table class="w-full text-left border-collapse text-xs">
+                    <thead>
+                        <tr class="bg-slate-100/80 text-slate-600 uppercase font-bold border-b border-slate-200">
+                            <th class="p-3 w-10 text-center">
+                                <input type="checkbox" id="selectAllCheckbox" onchange="toggleSelectAll(this)" class="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                            </th>
+                            <th class="p-3">No Tag</th>
+                            <th class="p-3">Nama Barang</th>
+                            <th class="p-3">User / OPR</th>
+                            <th class="p-3">Kode CC</th>
+                            <th class="p-3">Nama CC / Lokasi</th>
+                            <th class="p-3 text-center">Aksi ZPL</th>
+                        </tr>
+                    </thead>
+                    <tbody id="tableBody" class="divide-y divide-slate-100 text-slate-700">
+                        <tr id="rowLoading">
+                            <td colspan="7" class="py-12 text-center text-slate-400">
+                                <i class="fa-solid fa-spinner animate-spin text-2xl text-indigo-600 mb-2"></i>
+                                <p class="font-medium">Memuat data dari Spreadsheet...</p>
+                            </td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+
+            <!-- TABLE FOOTER / PAGINATION -->
+            <div class="flex flex-col sm:flex-row items-center justify-between gap-3 text-xs text-slate-500">
+                <div>
+                    Menampilkan <span id="viewingCount" class="font-bold text-slate-700">0</span> dari <span id="totalDataCount" class="font-bold text-slate-700">0</span> data
+                </div>
+                <div id="paginationControls" class="flex items-center space-x-1"></div>
+            </div>
+        </div>
+    </main>
+
+    <!-- FOOTER -->
+    <footer class="bg-white border-t border-slate-200 py-4 mt-8 text-center text-xs text-slate-500">
+        <div class="max-w-7xl mx-auto px-4">
+            Printronix T600 Barcode ZPL Dashboard &bull; Auto-Overwrite Sheet `SUMBERTAG` per Store Excel
+        </div>
+    </footer>
+
+    <!-- SETTINGS MODAL -->
+    <div id="settingsModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-slate-100">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <h3 class="font-bold text-slate-800 text-base flex items-center space-x-2">
+                    <i class="fa-solid fa-link text-indigo-600"></i>
+                    <span>Konfigurasi Web App URL</span>
+                </h3>
+                <button onclick="toggleSettingsModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+            
+            <p class="text-xs text-slate-500 mb-4">
+                Masukkan URL Google Apps Script yang telah Anda Deploy sebagai Web App (Anyone).
+            </p>
+
+            <div class="space-y-4">
+                <div>
+                    <label class="block text-xs font-semibold text-slate-600 mb-1" for="webAppUrlInput">Web App URL</label>
+                    <textarea id="webAppUrlInput" rows="3" class="w-full p-3 bg-slate-50 border border-slate-300 rounded-xl text-xs focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"></textarea>
+                </div>
+                
+                <div class="flex justify-end space-x-2 pt-2">
+                    <button onclick="toggleSettingsModal()" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100">Batal</button>
+                    <button onclick="saveSettings()" class="px-4 py-2 rounded-xl text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white shadow-md">Simpan URL</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- ZPL PREVIEW MODAL -->
+    <div id="zplModal" class="fixed inset-0 bg-slate-900/50 backdrop-blur-sm hidden z-50 flex items-center justify-center p-4">
+        <div class="bg-white rounded-2xl max-w-xl w-full p-6 shadow-2xl border border-slate-100">
+            <div class="flex justify-between items-center pb-3 border-b border-slate-100 mb-4">
+                <h3 class="font-bold text-slate-800 text-base flex items-center space-x-2">
+                    <i class="fa-solid fa-code text-indigo-600"></i>
+                    <span>Preview Format ZPL (Printronix T600)</span>
+                </h3>
+                <button onclick="toggleZplModal()" class="text-slate-400 hover:text-slate-600">
+                    <i class="fa-solid fa-xmark"></i>
+                </button>
+            </div>
+
+            <div class="space-y-4">
+                <textarea id="zplPreviewText" readonly rows="10" class="w-full p-3 bg-slate-900 text-emerald-400 rounded-xl text-xs font-mono focus:outline-none custom-scrollbar"></textarea>
+
+                <div class="flex justify-between items-center">
+                    <button onclick="copyZplToClipboard()" class="px-3.5 py-2 bg-slate-100 hover:bg-slate-200 text-slate-700 rounded-xl text-xs font-medium flex items-center space-x-1">
+                        <i class="fa-regular fa-copy"></i>
+                        <span>Salin Kode ZPL</span>
+                    </button>
+
+                    <div class="flex space-x-2">
+                        <button onclick="toggleZplModal()" class="px-4 py-2 rounded-xl text-xs font-medium text-slate-600 hover:bg-slate-100">Tutup</button>
+                        <button onclick="downloadZplFile()" class="px-4 py-2 rounded-xl text-xs font-medium bg-indigo-600 hover:bg-indigo-700 text-white shadow-md flex items-center space-x-1.5">
+                            <i class="fa-solid fa-download"></i>
+                            <span>Download .TXT</span>
+                        </button>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- JAVASCRIPT LOGIC -->
+    <script>
+        const DEFAULT_WEB_APP_URL = "https://script.google.com/macros/s/AKfycbx0pzzKOjlVyhMyjeAlxlqSxn1H1f5MDp3uCmZ_itTGmsvcuUyI0M0--pe7tjMbdnyu/exec";
+        
+        let webAppUrl = localStorage.getItem('WEB_APP_URL') || DEFAULT_WEB_APP_URL;
+        let globalData = [];
+        let filteredData = [];
+        let selectedRows = new Set();
+        let currentZplText = '';
+        let autoRefreshTimer = null;
+        let refreshIntervalMs = 10000;
+
+        let currentPage = 1;
+        const rowsPerPage = 10;
+
+        window.onload = function() {
+            document.getElementById('webAppUrlInput').value = webAppUrl;
+            setupDragAndDrop();
+            fetchData();
+            startAutoRefresh();
+        };
+
+        // DRAG AND DROP HANDLER
+        function setupDragAndDrop() {
+            const dropZone = document.getElementById('dropZone');
+
+            ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, preventDefaults, false);
+            });
+
+            function preventDefaults(e) {
+                e.preventDefault();
+                e.stopPropagation();
+            }
+
+            ['dragenter', 'dragover'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.add('bg-indigo-100/60', 'border-indigo-600'), false);
+            });
+
+            ['dragleave', 'drop'].forEach(eventName => {
+                dropZone.addEventListener(eventName, () => dropZone.classList.remove('bg-indigo-100/60', 'border-indigo-600'), false);
+            });
+
+            dropZone.addEventListener('drop', (e) => {
+                const dt = e.dataTransfer;
+                const files = dt.files;
+                if (files.length > 0) {
+                    processExcelFile(files[0]);
+                }
+            });
+        }
+
+        // HANDLE FILE INPUT SELECT
+        function handleFileSelect(e) {
+            const files = e.target.files;
+            if (files.length > 0) {
+                processExcelFile(files[0]);
+            }
+        }
+
+        // PARSE EXCEL & UPLOAD TO GOOGLE SPREADSHEET (OVERWRITE)
+        function processExcelFile(file) {
+            document.getElementById('fileNameDisplay').innerText = `File terpilih: ${file.name}`;
+            document.getElementById('uploadIcon').className = 'fa-solid fa-spinner animate-spin text-indigo-600';
+
+            const reader = new FileReader();
+
+            reader.onload = function(e) {
+                try {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, { type: 'array' });
+
+                    const firstSheetName = workbook.SheetNames[0];
+                    const worksheet = workbook.Sheets[firstSheetName];
+                    const jsonData = XLSX.utils.sheet_to_json(worksheet, { defval: '' });
+
+                    if (jsonData.length === 0) {
+                        showToast('File Excel kosong atau format tidak sesuai!', 'error');
+                        resetUploadIcon();
+                        return;
+                    }
+
+                    // Mapping Data Kolom (Normalisasi Header)
+                    const mappedData = jsonData.map(row => {
+                        return {
+                            no_tag: String(findValueByKey(row, ['NO_TAG', 'NO TAG', 'TAG'])).trim(),
+                            nama_barang: String(findValueByKey(row, ['NAMA_BARANG', 'NAMA BARANG', 'BARANG'])).trim(),
+                            user: String(findValueByKey(row, ['USER', 'OPR', 'OPERATOR'])).trim(),
+                            kode_cc: String(findValueByKey(row, ['KODE_CC', 'KODE CC', 'CC'])).trim(),
+                            nama_cc: String(findValueByKey(row, ['NAMA_CC', 'NAMA CC', 'LOKASI'])).trim()
+                        };
+                    }).filter(item => item.no_tag || item.nama_barang);
+
+                    if (mappedData.length === 0) {
+                        showToast('Tidak ada data valid yang bisa dibaca dari file Excel ini', 'error');
+                        resetUploadIcon();
+                        return;
+                    }
+
+                    // Kirim ke Apps Script untuk Mengganti (Overwrite) Isi Sheet SUMBERTAG
+                    sendOverwriteToBackend(mappedData);
+
+                } catch (err) {
+                    console.error(err);
+                    showToast('Gagal membaca file Excel: ' + err.message, 'error');
+                    resetUploadIcon();
+                }
+            };
+
+            reader.readAsArrayBuffer(file);
+        }
+
+        function findValueByKey(obj, possibleKeys) {
+            for (let key in obj) {
+                const cleanKey = key.trim().toUpperCase();
+                if (possibleKeys.includes(cleanKey)) {
+                    return obj[key];
+                }
+            }
+            return '';
+        }
+
+        function resetUploadIcon() {
+            document.getElementById('uploadIcon').className = 'fa-solid fa-file-csv';
+        }
+
+        // SEND OVERWRITE REQUEST TO APPS SCRIPT
+        async function sendOverwriteToBackend(dataArray) {
+            showToast(`Mengupload ${dataArray.length} data Excel & memperbarui Spreadsheet...`, 'info');
+
+            const payload = {
+                action: 'overwrite',
+                data: dataArray
+            };
+
+            try {
+                const response = await fetch(webAppUrl, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'text/plain;charset=utf-8' },
+                    body: JSON.stringify(payload),
+                    redirect: 'follow'
+                });
+
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    showToast(`Berhasil memperbarui ${dataArray.length} data toko ke Spreadsheet!`, 'success');
+                    globalData = result.data || [];
+                    updateStats();
+                    filterData();
+                } else {
+                    showToast('Gagal update spreadsheet: ' + result.message, 'error');
+                }
+            } catch (err) {
+                console.warn('POST failed, fallback via GET JSONP...', err);
+                sendOverwriteJSONP(dataArray);
+            } finally {
+                resetUploadIcon();
+            }
+        }
+
+        // FALLBACK JSONP OVERWRITE
+        function sendOverwriteJSONP(dataArray) {
+            const callbackName = 'jsonp_overwrite_' + Math.round(100000 * Math.random());
+            const script = document.createElement('script');
+            
+            const url = new URL(webAppUrl);
+            url.searchParams.append('action', 'overwrite');
+            url.searchParams.append('payload', JSON.stringify(dataArray));
+            url.searchParams.append('callback', callbackName);
+
+            window[callbackName] = function(result) {
+                delete window[callbackName];
+                if (document.body.contains(script)) document.body.removeChild(script);
+                resetUploadIcon();
+
+                if (result.status === 'success') {
+                    showToast(`Berhasil memperbarui ${dataArray.length} data toko ke Spreadsheet!`, 'success');
+                    globalData = result.data || [];
+                    updateStats();
+                    filterData();
+                } else {
+                    showToast('Gagal menyimpan data: ' + result.message, 'error');
+                }
+            };
+
+            script.onerror = function() {
+                delete window[callbackName];
+                if (document.body.contains(script)) document.body.removeChild(script);
+                resetUploadIcon();
+                showToast('Terjadi kesalahan saat memproses data Excel ke Spreadsheet', 'error');
+            };
+
+            script.src = url.toString();
+            document.body.appendChild(script);
+        }
+
+        // FETCH DATA FROM SPREADSHEET
+        async function fetchData(isSilent = false) {
+            const iconRefresh = document.getElementById('iconRefresh');
+            if (!isSilent) iconRefresh.classList.add('animate-spin');
+
+            try {
+                const url = new URL(webAppUrl);
+                url.searchParams.append('action', 'getData');
+
+                const response = await fetch(url.toString(), { method: 'GET', redirect: 'follow' });
+                const result = await response.json();
+
+                if (result.status === 'success') {
+                    globalData = result.data || [];
+                    updateStats();
+                    filterData();
+                    document.getElementById('statTime').innerText = new Date().toLocaleTimeString('id-ID');
+                } else {
+                    if (!isSilent) showToast('Gagal memuat data: ' + result.message, 'error');
+                }
+            } catch (err) {
+                fetchDataJSONP(isSilent);
+            } finally {
+                if (!isSilent) iconRefresh.classList.remove('animate-spin');
+            }
+        }
+
+        function fetchDataJSONP(isSilent = false) {
+            const callbackName = 'jsonp_fetch_' + Math.round(100000 * Math.random());
+            const script = document.createElement('script');
+            
+            const url = new URL(webAppUrl);
+            url.searchParams.append('action', 'getData');
+            url.searchParams.append('callback', callbackName);
+
+            window[callbackName] = function(result) {
+                delete window[callbackName];
+                if (document.body.contains(script)) document.body.removeChild(script);
+                if (result.status === 'success') {
+                    globalData = result.data || [];
+                    updateStats();
+                    filterData();
+                    document.getElementById('statTime').innerText = new Date().toLocaleTimeString('id-ID');
+                }
+            };
+
+            script.onerror = function() {
+                delete window[callbackName];
+                if (document.body.contains(script)) document.body.removeChild(script);
+            };
+
+            script.src = url.toString();
+            document.body.appendChild(script);
+        }
+
+        // STATS & FILTER LOGIC
+        function updateStats() {
+            document.getElementById('statTotal').innerText = globalData.length;
+            const uniqueUsers = new Set(globalData.map(d => d.user).filter(Boolean));
+            document.getElementById('statUsers').innerText = uniqueUsers.size;
+            const uniqueCC = new Set(globalData.map(d => d.kode_cc).filter(Boolean));
+            document.getElementById('statCC').innerText = uniqueCC.size;
+        }
+
+        function filterData() {
+            const query = document.getElementById('searchInput').value.toLowerCase();
+            filteredData = globalData.filter(item => {
+                return (
+                    (item.no_tag && item.no_tag.toLowerCase().includes(query)) ||
+                    (item.nama_barang && item.nama_barang.toLowerCase().includes(query)) ||
+                    (item.user && item.user.toLowerCase().includes(query)) ||
+                    (item.kode_cc && item.kode_cc.toLowerCase().includes(query)) ||
+                    (item.nama_cc && item.nama_cc.toLowerCase().includes(query))
+                );
+            });
+            currentPage = 1;
+            renderTable();
+        }
+
+        // RENDER TABLE DATA
+        function renderTable() {
+            const tbody = document.getElementById('tableBody');
+            tbody.innerHTML = '';
+
+            if (filteredData.length === 0) {
+                tbody.innerHTML = `
+                    <tr>
+                        <td colspan="7" class="py-10 text-center text-slate-400">
+                            <i class="fa-solid fa-box-open text-3xl mb-2"></i>
+                            <p class="font-medium text-xs">Spreadsheet masih kosong. Silakan upload file Excel toko Anda!</p>
+                        </td>
+                    </tr>`;
+                document.getElementById('viewingCount').innerText = 0;
+                document.getElementById('totalDataCount').innerText = 0;
+                renderPagination(0);
+                return;
+            }
+
+            const startIndex = (currentPage - 1) * rowsPerPage;
+            const endIndex = Math.min(startIndex + rowsPerPage, filteredData.length);
+            const pageData = filteredData.slice(startIndex, endIndex);
+
+            pageData.forEach(item => {
+                const isChecked = selectedRows.has(item.rowId);
+                const tr = document.createElement('tr');
+                tr.className = 'hover:bg-slate-50 transition border-b border-slate-100';
+
+                tr.innerHTML = `
+                    <td class="p-3 text-center">
+                        <input type="checkbox" onchange="toggleSelectRow(${item.rowId})" ${isChecked ? 'checked' : ''} class="row-checkbox rounded border-slate-300 text-indigo-600 focus:ring-indigo-500 h-4 w-4">
+                    </td>
+                    <td class="p-3 font-semibold text-indigo-900">${escapeHtml(item.no_tag)}</td>
+                    <td class="p-3 max-w-xs font-medium truncate">${escapeHtml(item.nama_barang)}</td>
+                    <td class="p-3">${escapeHtml(item.user) || '<span class="text-slate-300">-</span>'}</td>
+                    <td class="p-3 font-mono text-slate-600">${escapeHtml(item.kode_cc) || '<span class="text-slate-300">-</span>'}</td>
+                    <td class="p-3">${escapeHtml(item.nama_cc) || '<span class="text-slate-300">-</span>'}</td>
+                    <td class="p-3 text-center">
+                        <button onclick="previewSingleZPL('${escapeHtml(item.no_tag)}', '${escapeHtml(item.nama_barang)}', '${escapeHtml(item.nama_cc)}', '${escapeHtml(item.user)}')" title="Preview ZPL" class="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 rounded-lg text-xs font-medium transition flex items-center space-x-1 mx-auto">
+                            <i class="fa-solid fa-barcode text-xs"></i>
+                            <span>ZPL</span>
+                        </button>
+                    </td>
+                `;
+                tbody.appendChild(tr);
+            });
+
+            document.getElementById('viewingCount').innerText = `${startIndex + 1}-${endIndex}`;
+            document.getElementById('totalDataCount').innerText = filteredData.length;
+
+            renderPagination(Math.ceil(filteredData.length / rowsPerPage));
+            updateSelectedUI();
+        }
+
+        function renderPagination(totalPages) {
+            const container = document.getElementById('paginationControls');
+            container.innerHTML = '';
+            if (totalPages <= 1) return;
+
+            const prevBtn = document.createElement('button');
+            prevBtn.className = `px-2.5 py-1 rounded-lg border text-xs font-medium ${currentPage === 1 ? 'border-slate-200 text-slate-300 cursor-not-allowed' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`;
+            prevBtn.innerHTML = `<i class="fa-solid fa-chevron-left"></i>`;
+            prevBtn.disabled = currentPage === 1;
+            prevBtn.onclick = () => { currentPage--; renderTable(); };
+            container.appendChild(prevBtn);
+
+            for (let i = 1; i <= totalPages; i++) {
+                const pageBtn = document.createElement('button');
+                pageBtn.className = `px-3 py-1 rounded-lg text-xs font-medium ${i === currentPage ? 'bg-indigo-600 text-white shadow-sm' : 'border border-slate-200 text-slate-600 hover:bg-slate-100'}`;
+                pageBtn.innerText = i;
+                pageBtn.onclick = () => { currentPage = i; renderTable(); };
+                container.appendChild(pageBtn);
+            }
+
+            const nextBtn = document.createElement('button');
+            nextBtn.className = `px-2.5 py-1 rounded-lg border text-xs font-medium ${currentPage === totalPages ? 'border-slate-200 text-slate-300 cursor-not-allowed' : 'border-slate-300 text-slate-600 hover:bg-slate-100'}`;
+            nextBtn.innerHTML = `<i class="fa-solid fa-chevron-right"></i>`;
+            nextBtn.disabled = currentPage === totalPages;
+            nextBtn.onclick = () => { currentPage++; renderTable(); };
+            container.appendChild(nextBtn);
+        }
+
+        // ROW SELECTION & ZPL EXPORT
+        function toggleSelectRow(rowId) {
+            if (selectedRows.has(rowId)) selectedRows.delete(rowId);
+            else selectedRows.add(rowId);
+            updateSelectedUI();
+        }
+
+        function toggleSelectAll(el) {
+            if (el.checked) filteredData.forEach(item => selectedRows.add(item.rowId));
+            else selectedRows.clear();
+            renderTable();
+        }
+
+        function updateSelectedUI() {
+            const count = selectedRows.size;
+            document.getElementById('selectedCount').innerText = count;
+            const btn = document.getElementById('btnExportSelected');
+            if (count > 0) {
+                btn.disabled = false;
+                btn.className = "bg-indigo-50 hover:bg-indigo-100 text-indigo-700 font-medium text-xs px-3.5 py-2 rounded-xl transition flex items-center space-x-1.5 border border-indigo-200 cursor-pointer active:scale-95";
+            } else {
+                btn.disabled = true;
+                btn.className = "bg-slate-100 text-slate-400 font-medium text-xs px-3.5 py-2 rounded-xl transition flex items-center space-x-1.5 border border-slate-200 cursor-not-allowed";
+            }
+        }
+
+        function generateZPLString(itemList) {
+            let zpl = '';
+            itemList.forEach(item => {
+                const noTag = item.no_tag || '';
+                const namaBarang = item.nama_barang || '';
+                const namaCc = item.nama_cc || '';
+                const user = item.user || '';
+
+                zpl += `^XA\n`;
+                zpl += `^PRB^LT15^LH0,5^POI^MD25^MMT^BY2,3.0,100\n`;
+                zpl += `^FO65,45^BCN,80,Y,N,N^FR^FD${noTag}^FS\n`;
+                zpl += `^FO65,150^A0N,20^FD${namaBarang}^FS\n`;
+                zpl += `^FO65,175^A0N,20^FD${namaCc}^FS\n`;
+                zpl += `^FO65,200^A0N,20^FD${user}^FS\n`;
+                zpl += `^XZ\n\n`;
+            });
+            return zpl.trim();
+        }
+
+        function previewSingleZPL(noTag, namaBarang, namaCc, user) {
+            const singleItem = [{ no_tag: noTag, nama_barang: namaBarang, nama_cc: namaCc, user: user }];
+            currentZplText = generateZPLString(singleItem);
+            document.getElementById('zplPreviewText').value = currentZplText;
+            toggleZplModal();
+        }
+
+        function exportZPL(type) {
+            let targetData = [];
+            if (type === 'all') targetData = globalData;
+            else if (type === 'selected') targetData = globalData.filter(d => selectedRows.has(d.rowId));
+
+            if (targetData.length === 0) {
+                showToast('Tidak ada data untuk diekspor', 'error');
+                return;
+            }
+
+            currentZplText = generateZPLString(targetData);
+            document.getElementById('zplPreviewText').value = currentZplText;
+            toggleZplModal();
+        }
+
+        function downloadZplFile() {
+            if (!currentZplText) return;
+            const blob = new Blob([currentZplText], { type: 'text/plain;charset=utf-8' });
+            const link = document.createElement('a');
+            link.href = URL.createObjectURL(blob);
+            const dateStr = new Date().toISOString().slice(0,10);
+            link.download = `ZPL_PRINTRONIX_${dateStr}.txt`;
+            document.body.appendChild(link);
+            link.click();
+            document.body.removeChild(link);
+            showToast('File ZPL .TXT berhasil di-download!', 'success');
+        }
+
+        function copyZplToClipboard() {
+            const textArea = document.getElementById('zplPreviewText');
+            textArea.select();
+            document.execCommand('copy');
+            showToast('Kode ZPL berhasil disalin ke clipboard!', 'success');
+        }
+
+        function downloadSampleExcel() {
+            const sampleData = [
+                { NO_TAG: "S/SS2D/2602/2", NAMA_BARANG: "GENERATOR LONCIN LC 8800 D-A", USER: "SS2D OPR", KODE_CC: "CC01", NAMA_CC: "JL MADURA" },
+                { NO_TAG: "S/SS2D/2602/3", NAMA_BARANG: "PRINTER PRINTRONIX T600", USER: "ADMIN STORE", KODE_CC: "CC02", NAMA_CC: "GUDANG UTAMA" }
+            ];
+            const ws = XLSX.utils.json_to_sheet(sampleData);
+            const wb = XLSX.utils.book_new();
+            XLSX.utils.book_append_sheet(wb, ws, "SUMBERTAG");
+            XLSX.writeFile(wb, "CONTOH_FORMAT_EXCEL_SUMBERTAG.xlsx");
+        }
+
+        // TIMER & MODAL CONTROL
+        function startAutoRefresh() {
+            if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+            if (refreshIntervalMs > 0) {
+                autoRefreshTimer = setInterval(() => fetchData(true), refreshIntervalMs);
+            }
+        }
+
+        function changeAutoRefresh(val) {
+            refreshIntervalMs = parseInt(val);
+            if (refreshIntervalMs === 0) {
+                if (autoRefreshTimer) clearInterval(autoRefreshTimer);
+            } else {
+                startAutoRefresh();
+            }
+        }
+
+        function toggleSettingsModal() { document.getElementById('settingsModal').classList.toggle('hidden'); }
+        function toggleZplModal() { document.getElementById('zplModal').classList.toggle('hidden'); }
+
+        function saveSettings() {
+            const inputVal = document.getElementById('webAppUrlInput').value.trim();
+            if (!inputVal) return showToast('URL tidak boleh kosong', 'error');
+            webAppUrl = inputVal;
+            localStorage.setItem('WEB_APP_URL', webAppUrl);
+            toggleSettingsModal();
+            showToast('Web App URL berhasil disimpan', 'success');
+            fetchData();
+        }
+
+        function showToast(message, type = 'info') {
+            const toast = document.getElementById('toast');
+            const toastIcon = document.getElementById('toastIcon');
+            const toastMessage = document.getElementById('toastMessage');
+
+            toastMessage.innerText = message;
+            if (type === 'success') {
+                toast.className = 'p-4 rounded-xl shadow-md flex items-center justify-between bg-emerald-50 text-emerald-800 border border-emerald-200';
+                toastIcon.className = 'fa-solid fa-circle-check text-emerald-600 text-xl';
+            } else if (type === 'error') {
+                toast.className = 'p-4 rounded-xl shadow-md flex items-center justify-between bg-rose-50 text-rose-800 border border-rose-200';
+                toastIcon.className = 'fa-solid fa-triangle-exclamation text-rose-600 text-xl';
+            } else {
+                toast.className = 'p-4 rounded-xl shadow-md flex items-center justify-between bg-indigo-50 text-indigo-800 border border-indigo-200';
+                toastIcon.className = 'fa-solid fa-circle-info text-indigo-600 text-xl';
+            }
+            toast.classList.remove('hidden');
+            setTimeout(() => hideToast(), 5000);
+        }
+
+        function hideToast() { document.getElementById('toast').classList.add('hidden'); }
+
+        function escapeHtml(str) {
+            if (!str) return '';
+            return String(str)
+                .replace(/&/g, "&amp;")
+                .replace(/</g, "&lt;")
+                .replace(/>/g, "&gt;")
+                .replace(/"/g, "&quot;")
+                .replace(/'/g, "&#039;");
+        }
+    </script>
+</body>
+</html>
